@@ -6,6 +6,7 @@ import { formatOrderResponse } from "../utils/responseShapes";
 
 export const salesRouter = Router();
 
+// GET /sales/summary — revenue and order counts for the user's branch (or all branches for Admin/HQ)
 salesRouter.get(
   "/summary",
   requireAuth,
@@ -84,7 +85,10 @@ salesRouter.get(
   }
 );
 
-// GET /sales/analytics — full analytics data for HQ dashboard
+// GET /sales/by-branch — revenue and order breakdown per branch for Admin/HQ comparison views
+// (already declared above)
+
+// GET /sales/analytics — full analytics data including monthly revenue trend and status breakdown for HQ dashboard
 salesRouter.get(
   "/analytics",
   requireAuth,
@@ -94,6 +98,7 @@ salesRouter.get(
       const branches = await prisma.branch.findMany();
       const allOrders = await prisma.order.findMany({ orderBy: { createdAt: "asc" } });
 
+      // Build per-branch totals: order counts, revenue, and status breakdown
       const branchSummaries = branches.map((branch) => {
         const branchOrders = allOrders.filter((o) => o.branchId === branch.id);
         const paid = branchOrders.filter((o) => o.status === "Paid");
@@ -124,6 +129,7 @@ salesRouter.get(
       ];
 
       const now = new Date();
+      // Build last 6 months of paid revenue for the trend chart
       const monthlyRevenue = Array.from({ length: 6 }, (_, i) => {
         const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
         const label = d.toLocaleDateString("en-GB", { month: "short", year: "2-digit" });

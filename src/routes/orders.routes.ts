@@ -9,6 +9,7 @@ import { formatOrderResponse, formatOrderResponses } from "../utils/responseShap
 
 export const ordersRouter = Router();
 
+// GET /orders/my — customer fetches their own order history by name match
 ordersRouter.get(
   "/my",
   requireAuth,
@@ -27,6 +28,7 @@ ordersRouter.get(
   }
 );
 
+// All routes below require staff authentication and branch scoping
 ordersRouter.use(
   requireAuth,
   requireRoles(
@@ -40,6 +42,7 @@ ordersRouter.use(
   requireBranchScopedUser
 );
 
+// GET /orders — list orders scoped to the user's branch (Admin/HQ can see all)
 ordersRouter.get("/", async (req, res, next) => {
   try {
     const where = req.user?.role === Roles.Admin || req.user?.role === Roles.HQManager
@@ -50,6 +53,7 @@ ordersRouter.get("/", async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+// GET /orders/:id — fetch a single order, blocked if it belongs to a different branch
 ordersRouter.get("/:id", checkBranchIsolation("order"), async (req, res, next) => {
   try {
     const order = await prisma.order.findUnique({ where: { id: req.params.id } });
@@ -58,6 +62,7 @@ ordersRouter.get("/:id", checkBranchIsolation("order"), async (req, res, next) =
   } catch (error) { next(error); }
 });
 
+// POST /orders — create a new order for a table at the user's branch
 ordersRouter.post(
   "/",
   requireRoles(Roles.Admin, Roles.BranchManager, Roles.Cashier, Roles.Waiter),
@@ -79,6 +84,7 @@ ordersRouter.post(
   }
 );
 
+// PUT /orders/:id/status — move an order through the workflow (Pending→Preparing→Served→Paid)
 ordersRouter.put(
   "/:id/status",
   requireRoles(Roles.Admin, Roles.BranchManager, Roles.Chef, Roles.Cashier, Roles.Waiter),
@@ -99,6 +105,7 @@ ordersRouter.put(
 
       const isManager = role === Roles.Admin || role === Roles.BranchManager;
 
+      // Enforce role-based order flow — each role can only move to their allowed next step
       if (!isManager) {
         if (role === Roles.Chef) {
           if (!(from === "Pending" && to === "Preparing")) {
@@ -117,6 +124,7 @@ ordersRouter.put(
 
       const updatedOrder = await prisma.order.update({ where: { id: req.params.id }, data: { status } });
 
+      // Auto-deduct inventory quantities when an order is marked as Paid
       if (to === "Paid" && Array.isArray(updatedOrder.items)) {
         for (const item of updatedOrder.items as { name: string; quantity: number }[]) {
           const invItem = await prisma.inventoryItem.findFirst({
@@ -124,11 +132,13 @@ ordersRouter.put(
           });
           if (invItem) {
             const newQty = Math.max(0, invItem.quantity - item.quantity);
+            // If quantity drops to 4 or below, flag item as LowStock automatically
             const newStatus = newQty <= 4 ? "LowStock" as const : "Normal" as const;
             await prisma.inventoryItem.update({
               where: { id: invItem.id },
               data: { quantity: newQty, status: newStatus },
             });
+            // If stock hits zero, mark the menu item as unavailable for ordering
             if (newQty === 0) {
               await prisma.menuItem.updateMany({
                 where: { name: item.name, branchId: updatedOrder.branchId },
@@ -144,6 +154,7 @@ ordersRouter.put(
   }
 );
 
+// DELETE /orders/:id — remove an order from the system (managers only)
 ordersRouter.delete(
   "/:id",
   requireRoles(Roles.Admin, Roles.BranchManager, Roles.Cashier, Roles.Waiter),

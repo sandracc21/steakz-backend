@@ -8,12 +8,14 @@ import { Roles } from "../types/roles";
 
 export const inventoryRouter = Router();
 
+// All inventory routes require staff authentication and branch scoping
 inventoryRouter.use(
   requireAuth,
   requireRoles(Roles.Admin, Roles.HQManager, Roles.BranchManager, Roles.Chef),
   requireBranchScopedUser
 );
 
+// GET /inventory — list inventory for the user's branch (Admin/HQ can pass branchId to filter)
 inventoryRouter.get("/", async (req, res, next) => {
   try {
     const where = req.user?.role === Roles.Admin || req.user?.role === Roles.HQManager
@@ -24,6 +26,7 @@ inventoryRouter.get("/", async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+// POST /inventory — upsert logic: add stock to an existing item or create a new inventory row
 inventoryRouter.post(
   "/",
   requireRoles(Roles.Admin, Roles.BranchManager, Roles.Chef),
@@ -45,11 +48,13 @@ inventoryRouter.post(
 
       let item;
       if (existing) {
+        // Item already exists — add the new quantity on top of what's there
         const newQty = existing.quantity + Number(quantity);
         item = await prisma.inventoryItem.update({
           where: { id: existing.id },
           data: { quantity: newQty, status: newQty <= 4 ? "LowStock" : "Normal" },
         });
+        // If restocking brought the count above zero, mark the menu item as available again
         if (newQty > 0) {
           await prisma.menuItem.updateMany({
             where: { name: trimmedName, branchId },
@@ -57,6 +62,7 @@ inventoryRouter.post(
           });
         }
       } else {
+        // New item — create the inventory row and set LowStock flag if quantity is already low
         const qty = Number(quantity);
         item = await prisma.inventoryItem.create({
           data: { itemName: trimmedName, quantity: qty, status: qty <= 4 ? "LowStock" : "Normal", branchId },
@@ -74,6 +80,7 @@ inventoryRouter.post(
   }
 );
 
+// PUT /inventory/:id — update quantity or name; auto-sets LowStock status if qty drops to 4 or below
 inventoryRouter.put("/:id", requireRoles(Roles.Admin, Roles.BranchManager, Roles.Chef), checkBranchIsolation("inventoryItem"), async (req, res, next) => {
   try {
     const { itemName, quantity, status } = req.body as {
@@ -90,12 +97,14 @@ inventoryRouter.put("/:id", requireRoles(Roles.Admin, Roles.BranchManager, Roles
         ...(itemName !== undefined && { itemName }),
         ...(quantity !== undefined && {
           quantity,
+          // Automatically flag as LowStock when quantity is 4 or below
           status: quantity <= 4 ? "LowStock" : "Normal",
         }),
         ...(quantity === undefined && status !== undefined && { status }),
       },
     });
 
+    // Keep menu availability in sync with inventory quantity
     if (quantity !== undefined) {
       if (quantity === 0) {
         await prisma.menuItem.updateMany({
@@ -114,6 +123,7 @@ inventoryRouter.put("/:id", requireRoles(Roles.Admin, Roles.BranchManager, Roles
   } catch (error) { next(error); }
 });
 
+// DELETE /inventory/:id — remove the inventory row and mark the matching menu item as unavailable
 inventoryRouter.delete("/:id", requireRoles(Roles.Admin, Roles.BranchManager), checkBranchIsolation("inventoryItem"), async (req, res, next) => {
   try {
     const invItem = await prisma.inventoryItem.findUnique({ where: { id: req.params.id } });
@@ -121,6 +131,7 @@ inventoryRouter.delete("/:id", requireRoles(Roles.Admin, Roles.BranchManager), c
 
     await prisma.inventoryItem.delete({ where: { id: req.params.id } });
 
+    // Disable the menu item so customers can't order something with no inventory
     await prisma.menuItem.updateMany({
       where: { name: invItem.itemName, branchId: invItem.branchId },
       data: { available: false },

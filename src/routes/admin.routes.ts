@@ -6,8 +6,10 @@ import { ApiError } from "../middleware/errorHandler";
 import { Roles, isRole } from "../types/roles";
 
 export const adminRouter = Router();
+// All admin routes require Admin role — nothing else gets through
 adminRouter.use(requireAuth, requireRoles(Roles.Admin));
 
+// GET /admin/branches — list all branches with user, order, and inventory counts
 adminRouter.get("/branches", async (_req, res, next) => {
   try {
     const branches = await prisma.branch.findMany({
@@ -18,12 +20,14 @@ adminRouter.get("/branches", async (_req, res, next) => {
   } catch (error) { next(error); }
 });
 
+// POST /admin/branches — create a new branch and copy global menu items + inventory into it
 adminRouter.post("/branches", async (req, res, next) => {
   try {
     const { name, location } = req.body as { name?: string; location?: string };
     if (!name || !location) throw new ApiError(400, "name and location are required");
     const branch = await prisma.branch.create({ data: { name, location } });
 
+    // Copy every global menu item (branchId: null) into the new branch with starter inventory
     const globalMenuItems = await prisma.menuItem.findMany({ where: { branchId: null } });
     for (const item of globalMenuItems) {
       const newItem = await prisma.menuItem.create({
@@ -45,21 +49,25 @@ adminRouter.post("/branches", async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+// DELETE /admin/branches/:id — cascade delete all branch data before removing the branch itself
 adminRouter.delete("/branches/:id", async (req, res, next) => {
   try {
     const { id } = req.params;
+    // Delete in dependency order to avoid foreign key constraint errors
     await prisma.review.deleteMany({ where: { branchId: id } });
     await prisma.reservation.deleteMany({ where: { branchId: id } });
     await prisma.inventoryItem.deleteMany({ where: { branchId: id } });
     await prisma.shift.deleteMany({ where: { branchId: id } });
     await prisma.order.deleteMany({ where: { branchId: id } });
     await prisma.menuItem.deleteMany({ where: { branchId: id } });
+    // Unassign users rather than delete them — they may be reassigned later
     await prisma.user.updateMany({ where: { branchId: id }, data: { branchId: null } });
     await prisma.branch.delete({ where: { id } });
     res.json({ message: "Branch deleted successfully" });
   } catch (error) { next(error); }
 });
 
+// GET /admin/users — list all users across all branches
 adminRouter.get("/users", async (_req, res, next) => {
   try {
     const users = await prisma.user.findMany({
@@ -74,6 +82,7 @@ adminRouter.get("/users", async (_req, res, next) => {
   } catch (error) { next(error); }
 });
 
+// POST /admin/users — create a new staff or customer account
 adminRouter.post("/users", async (req, res, next) => {
   try {
     const { email, password, name, role, branchId } = req.body as {
@@ -98,6 +107,7 @@ adminRouter.post("/users", async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+// PUT /admin/users/:id — update user details (password is re-hashed if provided)
 adminRouter.put("/users/:id", async (req, res, next) => {
   try {
     const { email, password, name, role, branchId } = req.body as {
@@ -118,6 +128,7 @@ adminRouter.put("/users/:id", async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+// DELETE /admin/users/:id — permanently remove a user account
 adminRouter.delete("/users/:id", async (req, res, next) => {
   try {
     await prisma.user.delete({ where: { id: req.params.id } });

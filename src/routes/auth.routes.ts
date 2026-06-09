@@ -7,15 +7,18 @@ import { isRole, type Role } from "../types/roles";
 
 export const authRouter = Router();
 
+// POST /auth/login — verify email and password, return a JWT token and user details
 authRouter.post("/login", async (req, res, next) => {
   try {
     const { email, password } = req.body as { email?: string; password?: string };
     if (!email || !password) throw new ApiError(400, "Email and password are required");
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) throw new ApiError(401, "Invalid email or password");
+    // Compare the submitted password against the stored bcrypt hash
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) throw new ApiError(401, "Invalid email or password");
     if (!isRole(user.role)) throw new ApiError(403, "Unsupported role");
+    // Create a signed JWT containing userId, role, and branchId
     const token = signAuthToken({ userId: user.id, role: user.role, branchId: user.branchId });
     let branchName: string | null = null;
     if (user.branchId) {
@@ -29,6 +32,7 @@ authRouter.post("/login", async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+// POST /auth/register — create a new user account and return a JWT token
 authRouter.post("/register", async (req, res, next) => {
   try {
     const { email, password, name, role, branchId } = req.body as {
@@ -40,10 +44,12 @@ authRouter.post("/register", async (req, res, next) => {
     if (!isRole(role)) throw new ApiError(400, "Invalid role");
     const exists = await prisma.user.findUnique({ where: { email } });
     if (exists) throw new ApiError(409, "Email already in use");
+    // Hash the password before storing it
     const hashed = await bcrypt.hash(password, 12);
     const user = await prisma.user.create({
       data: { email, password: hashed, name, role, branchId: branchId ?? null },
     });
+    // Issue a token immediately so the user is logged in after registering
     const token = signAuthToken({ userId: user.id, role: user.role as Role, branchId: user.branchId });
     let branchName: string | null = null;
     if (user.branchId) {

@@ -16,11 +16,14 @@ import { reviewsRouter } from "./routes/reviews.routes";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
 import { seedInventoryForAllBranches } from "./utils/inventoryUtils";
 
+// Load environment variables from .env file
 dotenv.config();
 
 const app = express();
+// Use PORT from environment so it works in both dev and production
 const port = Number(process.env.PORT ?? 4000);
 
+// Only allow requests from these frontend dev origins to prevent cross-site abuse
 const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:5174",
@@ -30,6 +33,7 @@ const allowedOrigins = [
   "http://127.0.0.1:5175",
 ];
 
+// Allow cross-origin requests from the frontend and include cookies/auth headers
 app.use(cors({
   origin: (origin, callback) => {
     if (!origin || allowedOrigins.includes(origin)) {
@@ -41,25 +45,30 @@ app.use(cors({
   },
   credentials: true,
 }));
+// Parse incoming JSON request bodies (max 1mb to avoid oversized payloads)
 app.use(express.json({ limit: "1mb" }));
+// Log every incoming request to the console for debugging
 app.use(morgan("dev"));
 
+// Simple health-check endpoint so servers/monitors can confirm the API is running
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", service: "steakz-mis-api" });
 });
 
-app.use("/auth", authRouter);
-app.use("/admin", adminRouter);
-app.use("/hq", hqRouter);
-app.use("/orders", ordersRouter);
-app.use("/public", publicRouter);
-app.use("/inventory", inventoryRouter);
-app.use("/shifts", shiftsRouter);
-app.use("/sales", salesRouter);
-app.use("/menu", menuRouter);
-app.use("/reservations", reservationsRouter);
-app.use("/reviews", reviewsRouter);
+// Route groups — each handles a specific area of the app
+app.use("/auth", authRouter);           // Login and registration
+app.use("/admin", adminRouter);         // Admin-only branch and user management
+app.use("/hq", hqRouter);              // HQ manager views
+app.use("/orders", ordersRouter);       // Order creation and status updates
+app.use("/public", publicRouter);       // Publicly accessible menu and branch data
+app.use("/inventory", inventoryRouter); // Inventory tracking per branch
+app.use("/shifts", shiftsRouter);       // Staff shift scheduling
+app.use("/sales", salesRouter);         // Sales analytics and revenue summaries
+app.use("/menu", menuRouter);           // Menu item management
+app.use("/reservations", reservationsRouter); // Table reservations
+app.use("/reviews", reviewsRouter);     // Customer reviews
 
+// Mirror routes under /api/ prefix for frontend compatibility
 app.use("/api/reservations", reservationsRouter);
 app.use("/api/reviews", reviewsRouter);
 
@@ -73,10 +82,12 @@ app.use("/api/shifts", shiftsRouter);
 app.use("/api/sales", salesRouter);
 app.use("/api/menu", menuRouter);
 
+// Catch unmatched routes and format all errors consistently
 app.use(notFoundHandler);
 app.use(errorHandler);
 
 app.listen(port, () => {
   console.log(`Steakz MIS API listening on port ${port}`);
+  // Ensure every branch has inventory rows on startup
   seedInventoryForAllBranches().catch(console.error);
 });

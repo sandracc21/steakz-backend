@@ -8,6 +8,7 @@ import { formatMenuItemResponse, formatMenuItemResponses } from "../utils/respon
 
 export const menuRouter = Router();
 
+// GET /menu/manage — return branch-specific items plus global items for management view
 menuRouter.get(
   "/manage",
   requireAuth,
@@ -15,6 +16,7 @@ menuRouter.get(
   requireBranchScopedUser,
   async (req, res, next) => {
     try {
+      // Include global items (branchId: null) alongside branch-specific items
       const where = req.branchId
         ? { OR: [{ branchId: req.branchId }, { branchId: null }] }
         : {};
@@ -24,6 +26,7 @@ menuRouter.get(
   }
 );
 
+// POST /menu — add a new menu item and automatically create an inventory row for it
 menuRouter.post(
   "/",
   requireAuth,
@@ -49,11 +52,14 @@ menuRouter.post(
         },
       });
 
+      // Auto-create an inventory row so stock tracking starts immediately
       if (item.branchId) {
+        // Branch-specific item — create inventory only for that branch
         await prisma.inventoryItem.create({
           data: { itemName: item.name, quantity: 5, status: "Normal", branchId: item.branchId },
         });
       } else {
+        // Global item — create an inventory row for every branch
         const branches = await prisma.branch.findMany();
         for (const branch of branches) {
           await prisma.inventoryItem.create({
@@ -67,6 +73,7 @@ menuRouter.post(
   }
 );
 
+// PUT /menu/:id — update name, description, category, price, or availability
 menuRouter.put(
   "/:id",
   requireAuth,
@@ -92,6 +99,7 @@ menuRouter.put(
   }
 );
 
+// DELETE /menu/:id — permanently remove a menu item
 menuRouter.delete(
   "/:id",
   requireAuth,

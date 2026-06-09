@@ -4,8 +4,10 @@ import { prisma } from "../prisma";
 import { ApiError } from "./errorHandler";
 import { Roles } from "../types/roles";
 
+// The models that belong to a branch and can be isolated
 type BranchOwnedModel = "order" | "inventoryItem" | "shift" | "menuItem";
 
+// Lookup functions to fetch only the branchId for each supported model
 const modelReaders: Record<
   BranchOwnedModel,
   (id: string) => Promise<{ id: string; branchId: string | null } | null>
@@ -17,6 +19,7 @@ const modelReaders: Record<
   menuItem: (id) => prisma.menuItem.findUnique({ where: { id }, select: { id: true, branchId: true } }),
 };
 
+// Inject the current branch into a Prisma where-clause so queries are automatically scoped
 export const branchWhere = <T extends object>(req: Request, where?: T): T & { branchId: string } => {
   if (!req.branchId) {
     throw new ApiError(403, "Branch context is required");
@@ -28,6 +31,7 @@ export const branchWhere = <T extends object>(req: Request, where?: T): T & { br
   };
 };
 
+// Prevent non-Admin staff from writing data to a different branch than their own
 export const enforceBodyBranchIsolation = (
   req: Request,
   _res: Response,
@@ -53,6 +57,7 @@ export const enforceBodyBranchIsolation = (
   next();
 };
 
+// Confirm the resource being accessed belongs to the same branch as the logged-in user
 export const checkBranchIsolation =
   (model: BranchOwnedModel, idParam = "id") =>
   async (req: Request, _res: Response, next: NextFunction): Promise<void> => {
@@ -61,6 +66,7 @@ export const checkBranchIsolation =
         throw new ApiError(401, "Authentication required");
       }
 
+      // Admin and HQ can access any branch's data
       if (req.user.role === Roles.Admin || req.user.role === Roles.HQManager) {
         next();
         return;
@@ -80,6 +86,7 @@ export const checkBranchIsolation =
         throw new ApiError(404, "Resource not found");
       }
 
+      // Block access if the record belongs to a different branch
       if (!record.branchId || record.branchId !== req.user.branchId) {
         throw new ApiError(403, "Cannot access or alter data from another branch");
       }

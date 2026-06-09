@@ -7,6 +7,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// Tracks an order's journey through the kitchen workflow
 enum OrderStatus {
   Pending
   Preparing
@@ -14,22 +15,26 @@ enum OrderStatus {
   Paid
 }
 
+// Flags whether a stock item needs restocking
 enum InventoryStatus {
   Normal
   LowStock
 }
 
+// How a customer receives their order
 enum FulfillmentType {
   Collection
   Delivery
 }
 
+// Tracks whether a table reservation has been acted on
 enum ReservationStatus {
   Pending
   Seated
   Cancelled
 }
 
+// A physical restaurant location — all data is tied to a branch
 model Branch {
   id             String          @id @default(uuid())
   name           String          @unique
@@ -45,6 +50,7 @@ model Branch {
   updatedAt      DateTime        @updatedAt
 }
 
+// A staff member or customer account — role (Int) maps to the Roles enum in code
 model User {
   id        String   @id @default(uuid())
   email     String   @unique
@@ -60,6 +66,7 @@ model User {
   @@index([branchId])
 }
 
+// A customer's food order placed at a specific table in a branch
 model Order {
   id              String           @id @default(uuid())
   tableNumber     Int
@@ -81,6 +88,7 @@ model Order {
   @@index([fulfillmentType])
 }
 
+// A dish or drink available on the menu — branchId null means it's a global item for all branches
 model MenuItem {
   id          String   @id @default(uuid())
   name        String
@@ -97,6 +105,7 @@ model MenuItem {
   @@index([available])
 }
 
+// Tracks stock quantity for a menu item at a specific branch
 model InventoryItem {
   id        String          @id @default(uuid())
   itemName  String
@@ -110,6 +119,7 @@ model InventoryItem {
   @@index([branchId])
 }
 
+// A scheduled work period for a staff member at a branch
 model Shift {
   id        String   @id @default(uuid())
   userId    String
@@ -125,6 +135,7 @@ model Shift {
   @@index([userId])
 }
 
+// A table booking made by a customer — includes pre-ordered items and party size
 model Reservation {
   id            String            @id @default(uuid())
   customerName  String
@@ -145,6 +156,7 @@ model Reservation {
   @@index([status])
 }
 
+// A customer review tied to one specific completed order (one review per order enforced by @unique)
 model Review {
   id           String   @id @default(uuid())
   orderId      String   @unique

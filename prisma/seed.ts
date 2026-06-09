@@ -7,6 +7,7 @@ async function main() {
   const hash = (pw: string) => bcrypt.hash(pw, 12);
 
   // ── Clean up old Spanish data ──────────────────────────────────────────────
+  // Remove outdated menu items and old branch records from a previous version of the app
   await prisma.menuItem.deleteMany({});
   const oldNames = ["Madrid","Barcelona","Seville","Valencia","Bilbao","Manchester","Leeds","Mayfair","London (Mayfair)","Birmingham","Edinburgh"];
   const oldBranches = await prisma.branch.findMany({ where: { name: { in: oldNames } }, select: { id: true } });
@@ -24,12 +25,14 @@ async function main() {
   console.log("Cleaned up old branches");
 
   // ── UK Branches ────────────────────────────────────────────────────────────
+  // Create or update the 5 Steakz UK branch locations
   const manchester = await prisma.branch.upsert({ where: { name: "Manchester" }, update: {}, create: { name: "Manchester", location: "Manchester, UK" } });
   const london     = await prisma.branch.upsert({ where: { name: "London" },     update: {}, create: { name: "London",     location: "London, UK"     } });
   const edinburgh  = await prisma.branch.upsert({ where: { name: "Edinburgh" },  update: {}, create: { name: "Edinburgh",  location: "Edinburgh, UK"  } });
   const birmingham = await prisma.branch.upsert({ where: { name: "Birmingham" }, update: {}, create: { name: "Birmingham", location: "Birmingham, UK" } });
   const bristol    = await prisma.branch.upsert({ where: { name: "Bristol" },    update: {}, create: { name: "Bristol",    location: "Bristol, UK"    } });
 
+  // Map branch keys to their database records for the staff creation loop below
   const branches = [
     { key: "manchester", record: manchester },
     { key: "london",     record: london     },
@@ -66,9 +69,11 @@ async function main() {
   }
 
   // ── Global accounts ────────────────────────────────────────────────────────
+  // Admin (role 7) and HQ Manager (role 1) are not tied to any branch
   await prisma.user.upsert({ where: { email: "admin@steakz.co.uk" }, update: { name: "Steakz Admin" },  create: { email: "admin@steakz.co.uk", password: await hash("admin123"), name: "Steakz Admin",  role: 7, branchId: null } });
   await prisma.user.upsert({ where: { email: "hq@steakz.co.uk" },    update: { name: "HQ Manager" },    create: { email: "hq@steakz.co.uk",    password: await hash("hq123"),     name: "HQ Manager",    role: 1, branchId: null } });
 
+  // Seed demo customer accounts (role 6) for testing the ordering and review flows
   const customers = [
     { email: "sandra@steakz.co.uk",  name: "Sandra"  },
     { email: "tatenda@steakz.co.uk", name: "Tatenda" },
@@ -79,6 +84,7 @@ async function main() {
   }
 
   // ── Inventory ──────────────────────────────────────────────────────────────
+  // Seed a small set of branch-specific specialty items with realistic stock levels
   const invData = [
     { itemName: "28-Day Aged Ribeye",      quantity: 12, branchId: manchester.id },
     { itemName: "Bone Marrow",             quantity: 8,  branchId: manchester.id },
@@ -96,6 +102,7 @@ async function main() {
   }
 
   // ── Menu ───────────────────────────────────────────────────────────────────
+  // Global menu items have branchId: null so they appear at every branch
   const menuData = [
     // STARTERS
     { name: "Bone Marrow & Sourdough",     description: "Roasted bone marrow, parsley salad, sea salt sourdough toast.",               category: "Starters",  price: "8.95",  available: true, branchId: null },
@@ -134,11 +141,13 @@ async function main() {
   }
 
   // ── Reset all inventory to qty 5 ──────────────────────────────────────────
+  // Wipe and rebuild inventory so every branch starts with a clean, equal stock level
   console.log("Resetting all inventory to qty 5...");
   await prisma.inventoryItem.deleteMany({});
   const allBranches = await prisma.branch.findMany();
   const allMenuItems = await prisma.menuItem.findMany();
   for (const branch of allBranches) {
+    // Each branch gets rows for its own items plus all global items
     const branchItems = allMenuItems.filter(
       (m) => m.branchId === branch.id || m.branchId === null
     );
@@ -148,6 +157,7 @@ async function main() {
       });
     }
   }
+  // Mark every menu item as available now that stock has been reset
   await prisma.menuItem.updateMany({ where: {}, data: { available: true } });
   console.log("Inventory reset complete.");
 

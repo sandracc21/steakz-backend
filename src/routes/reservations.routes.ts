@@ -49,7 +49,7 @@ reservationsRouter.get(
   }
 );
 
-// POST /reservations — customer creates a reservation
+// POST /reservations — customer creates a reservation (no auth required)
 reservationsRouter.post("/", async (req, res, next) => {
   try {
     const { customerName, customerEmail, partySize, tableNumber, date, notes, items, totalAmount, branchId } = req.body;
@@ -60,6 +60,7 @@ reservationsRouter.post("/", async (req, res, next) => {
       throw new ApiError(400, "Please select at least one item");
     }
     const dateObj = new Date(date);
+    // Check within a 1-hour window either side of the requested time to prevent double-booking
     const hourStart = new Date(dateObj.getTime() - 60 * 60 * 1000);
     const hourEnd   = new Date(dateObj.getTime() + 60 * 60 * 1000);
     const conflict = await prisma.reservation.findFirst({
@@ -91,7 +92,7 @@ reservationsRouter.post("/", async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-// PUT /reservations/:id/seat — Waiter seats the customer, creates an order
+// PUT /reservations/:id/seat — waiter seats the customer and automatically creates a kitchen order
 reservationsRouter.put(
   "/:id/seat",
   requireAuth,
@@ -102,6 +103,7 @@ reservationsRouter.put(
       if (!reservation) throw new ApiError(404, "Reservation not found");
       if (reservation.status !== ReservationStatus.Pending) throw new ApiError(400, "Reservation is not pending");
 
+      // Create an order from the reservation's pre-ordered items so the kitchen can start immediately
       await prisma.order.create({
         data: {
           tableNumber: reservation.tableNumber,
@@ -116,6 +118,7 @@ reservationsRouter.put(
         },
       });
 
+      // Mark the reservation as Seated so it no longer shows as pending
       const updated = await prisma.reservation.update({
         where: { id: req.params.id },
         data: { status: ReservationStatus.Seated },

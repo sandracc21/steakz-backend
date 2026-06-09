@@ -7,12 +7,14 @@ import { Roles } from "../types/roles";
 
 export const shiftsRouter = Router();
 
+// All shift routes require authentication and branch scoping
 shiftsRouter.use(
   requireAuth,
   requireRoles(Roles.Admin, Roles.HQManager, Roles.BranchManager, Roles.Chef, Roles.Cashier, Roles.Waiter),
   requireBranchScopedUser
 );
 
+// GET /shifts/branch-staff — return all staff assigned to the current branch for the shift picker
 shiftsRouter.get("/branch-staff", requireRoles(Roles.BranchManager, Roles.Admin), async (req, res, next) => {
   try {
     const branchId = req.branchId;
@@ -26,6 +28,7 @@ shiftsRouter.get("/branch-staff", requireRoles(Roles.BranchManager, Roles.Admin)
   } catch (error) { next(error); }
 });
 
+// GET /shifts — list shifts scoped to the user's branch (Admin/HQ can query any branch)
 shiftsRouter.get("/", async (req, res, next) => {
   try {
     const where = req.user?.role === Roles.Admin || req.user?.role === Roles.HQManager
@@ -40,6 +43,7 @@ shiftsRouter.get("/", async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+// POST /shifts — schedule a new shift for a staff member at this branch
 shiftsRouter.post(
   "/",
   requireRoles(Roles.Admin, Roles.BranchManager),
@@ -55,6 +59,7 @@ shiftsRouter.post(
       if (!req.branchId) throw new ApiError(400, "branchId is required");
       const user = await prisma.user.findUnique({ where: { id: userId }, select: { branchId: true } });
       if (!user) throw new ApiError(404, "User not found");
+      // Prevent scheduling a user from a different branch into this shift
       if (user.branchId !== req.branchId) {
         throw new ApiError(403, "Cannot schedule a user outside the shift branch");
       }
@@ -67,6 +72,7 @@ shiftsRouter.post(
   }
 );
 
+// PUT /shifts/:id — update a shift's start or end time
 shiftsRouter.put("/:id", requireRoles(Roles.Admin, Roles.BranchManager, Roles.Chef), checkBranchIsolation("shift"), async (req, res, next) => {
   try {
     const { startTime, endTime } = req.body as { startTime?: string; endTime?: string };
@@ -83,6 +89,7 @@ shiftsRouter.put("/:id", requireRoles(Roles.Admin, Roles.BranchManager, Roles.Ch
   } catch (error) { next(error); }
 });
 
+// DELETE /shifts/:id — remove a scheduled shift
 shiftsRouter.delete("/:id", requireRoles(Roles.Admin, Roles.BranchManager), checkBranchIsolation("shift"), async (req, res, next) => {
   try {
     await prisma.shift.delete({ where: { id: req.params.id } });

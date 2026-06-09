@@ -33,7 +33,7 @@ reviewsRouter.get("/stats", async (_req, res, next) => {
   } catch (error) { next(error); }
 });
 
-// POST /reviews — customer submits a review
+// POST /reviews — customer submits a review for a completed order
 reviewsRouter.post(
   "/",
   requireAuth,
@@ -51,14 +51,17 @@ reviewsRouter.post(
 
       const order = await prisma.order.findUnique({ where: { id: orderId } });
       if (!order) throw new ApiError(404, "Order not found");
+      // Only Paid orders can be reviewed — ensures the customer actually received their food
       if (order.status !== "Paid") throw new ApiError(400, "You can only review a completed (Paid) order");
 
       const user = await prisma.user.findUnique({ where: { id: req.user!.userId } });
       if (!user) throw new ApiError(404, "User not found");
+      // Confirm the order was placed under the same customer name as the logged-in user
       if (order.customerName?.toLowerCase() !== user.name.toLowerCase()) {
         throw new ApiError(403, "This order does not belong to your account");
       }
 
+      // Enforce one review per order — orderId is unique in the Review table
       const existing = await prisma.review.findUnique({ where: { orderId } });
       if (existing) throw new ApiError(409, "You have already reviewed this order");
 
