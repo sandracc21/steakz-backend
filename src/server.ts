@@ -23,7 +23,7 @@ const app = express();
 // Use PORT from environment so it works in both dev and production
 const port = Number(process.env.PORT ?? 4000);
 
-// Only allow requests from these frontend dev origins to prevent cross-site abuse
+// Allow requests from localhost in dev and Vercel in production
 const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:5174",
@@ -31,7 +31,9 @@ const allowedOrigins = [
   "http://127.0.0.1:5173",
   "http://127.0.0.1:5174",
   "http://127.0.0.1:5175",
-];
+  "https://steakz-frontend-mu.vercel.app",
+  process.env.FRONTEND_URL,
+].filter(Boolean);
 
 // Allow cross-origin requests from the frontend and include cookies/auth headers
 app.use(cors({
@@ -40,7 +42,6 @@ app.use(cors({
       callback(null, true);
       return;
     }
-
     callback(new Error(`CORS blocked origin: ${origin}`));
   },
   credentials: true,
@@ -71,7 +72,6 @@ app.use("/reviews", reviewsRouter);     // Customer reviews
 // Mirror routes under /api/ prefix for frontend compatibility
 app.use("/api/reservations", reservationsRouter);
 app.use("/api/reviews", reviewsRouter);
-
 app.use("/api/auth", authRouter);
 app.use("/api/admin", adminRouter);
 app.use("/api/hq", hqRouter);
