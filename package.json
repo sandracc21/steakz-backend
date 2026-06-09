@@ -7,7 +7,7 @@
     "predev": "kill-port 4000 || true",
     "dev": "nodemon --watch src --ext ts --exec \"ts-node --files src/server.ts\"",
     "build": "echo 'No build needed'",
-    "start": "ts-node --files src/server.ts",
+    "start": "./node_modules/.bin/ts-node --files src/server.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
